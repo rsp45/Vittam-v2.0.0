@@ -11,8 +11,14 @@ if str(ROOT) not in sys.path:
 
 
 TEST_MODULES = [
+    "tests.test_api",
+    "tests.test_audit_log",
+    "tests.test_code_safety",
     "tests.test_feature_engine",
+    "tests.test_generated_model_runner",
     "tests.test_llm_agent",
+    "tests.test_llm_prompt_contract",
+    "tests.test_orchestration",
     "tests.test_regime_detector",
     "tests.test_validators",
 ]

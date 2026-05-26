@@ -63,4 +63,5 @@ def run_demo_pipeline() -> dict[str, object]:
         "shift_count": sum(1 for state in states if state.shift_detected),
         "validation": validation,
         "timeline": timeline,
+        "volatility_values": volatility_values,
     }

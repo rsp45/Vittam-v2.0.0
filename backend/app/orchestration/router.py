@@ -7,7 +7,13 @@ class AgentRouter:
     def route(self, intent: str) -> list[str]:
         intent_normalized = intent.lower().strip()
         if "model" in intent_normalized:
-            return ["market_analyst", "model_builder"]
+            return ["market_analyst", "volatility_researcher", "model_builder"]
         if "risk" in intent_normalized:
-            return ["market_analyst", "risk_guard"]
-        return ["market_analyst", "model_builder", "risk_guard"]
+            return ["market_analyst", "risk_guard", "portfolio_governor"]
+        return [
+            "market_analyst",
+            "volatility_researcher",
+            "model_builder",
+            "risk_guard",
+            "portfolio_governor",
+        ]

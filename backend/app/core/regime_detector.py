@@ -36,6 +36,9 @@ class RegimeDetector:
             + abs(features.order_flow_imbalance) * 0.45
             + min(features.spread / 10.0, 0.35)
             + features.vpin_proxy * 0.40
+            + abs(features.order_book_slope) * 0.25
+            + abs(features.micro_price_returns) * 50.0
+            + max(features.volatility_clustering - 1.0, 0.0) * 0.50
         )
 
         if stress_score >= 1.35:

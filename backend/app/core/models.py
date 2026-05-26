@@ -30,6 +30,9 @@ class FeatureVector:
     order_flow_imbalance: float
     spread: float
     vpin_proxy: float
+    order_book_slope: float = 0.0
+    micro_price_returns: float = 0.0
+    volatility_clustering: float = 0.0
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
