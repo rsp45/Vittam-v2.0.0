@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vittam V 2.0 Command Center</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="topbar">
+        <div>
+          <p class="eyebrow" id="symbolLabel">BTCUSDT live desk</p>
+          <h1>Vittam V 2.0</h1>
+        </div>
+        <button class="status-pill" id="refreshButton" type="button"><span></span> Refresh demo</button>
+      </section>
+
+      <section class="grid">
+        <article class="panel regime-panel">
+          <p class="label">Current Regime</p>
+          <h2 id="regimeLabel">LOADING</h2>
+          <p class="metric" id="confidenceLabel">waiting for backend</p>
+          <div class="temperature">
+            <div id="temperatureBar"></div>
+          </div>
+        </article>
+
+        <article class="panel">
+          <p class="label">Champion vs Challenger</p>
+          <div class="score-row">
+            <span>Champion RMSE</span>
+            <strong id="championRmse">--</strong>
+          </div>
+          <div class="score-row">
+            <span>Challenger RMSE</span>
+            <strong id="challengerRmse">--</strong>
+          </div>
+          <div class="approval" id="promotionStatus">Promotion candidate: waiting</div>
+        </article>
+
+        <article class="panel wide">
+          <p class="label">Regime Timeline</p>
+          <div class="timeline" id="timeline"></div>
+        </article>
+
+        <article class="panel wide terminal">
+          <p class="label">Agentic Model Lab</p>
+          <pre id="agentLog">Connecting to local backend...</pre>
+        </article>
+      </section>
+    </main>
+    <script src="./src/app.js"></script>
+  </body>
+</html>
