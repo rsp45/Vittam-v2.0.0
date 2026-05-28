@@ -31,18 +31,27 @@ class RegimeDetector:
         )
 
     def _classify(self, features: FeatureVector) -> tuple[RegimeLabel, float]:
+        # Jump intensity (realized volatility minus bipower variation)
+        jump_intensity = max(features.realized_volatility - features.realized_bipower_variation, 0.0)
+
         stress_score = (
-            features.realized_volatility * 120.0
-            + abs(features.order_flow_imbalance) * 0.45
-            + min(features.spread / 10.0, 0.35)
-            + features.vpin_proxy * 0.40
-            + abs(features.order_book_slope) * 0.25
-            + abs(features.micro_price_returns) * 50.0
-            + max(features.volatility_clustering - 1.0, 0.0) * 0.50
+            features.realized_volatility * 90.0
+            + jump_intensity * 120.0
+            + features.volatility_of_volatility * 150.0
+            + max(features.return_kurtosis, 0.0) * 0.08
+            + abs(features.return_skewness) * 0.10
+            + abs(features.depth_imbalance_acceleration) * 0.35
+            + abs(features.price_momentum) * 20.0
+            + abs(features.order_flow_imbalance) * 0.35
+            + min(features.spread / 10.0, 0.30)
+            + features.vpin_proxy * 0.30
+            + abs(features.order_book_slope) * 0.20
+            + abs(features.micro_price_returns) * 40.0
+            + max(features.volatility_clustering - 1.0, 0.0) * 0.40
         )
 
-        if stress_score >= 1.35:
-            return RegimeLabel.PANIC, min(0.99, 0.64 + stress_score / 5.0)
-        if stress_score >= 0.55:
-            return RegimeLabel.TRENDING, min(0.94, 0.62 + stress_score / 6.0)
-        return RegimeLabel.CALM, max(0.60, 0.92 - stress_score / 3.0)
+        if stress_score >= 1.55:
+            return RegimeLabel.PANIC, min(0.99, 0.65 + stress_score / 6.0)
+        if stress_score >= 0.65:
+            return RegimeLabel.TRENDING, min(0.94, 0.60 + stress_score / 7.0)
+        return RegimeLabel.CALM, max(0.60, 0.95 - stress_score / 2.5)

@@ -6,6 +6,10 @@ from backend.app.main import app
 from backend.app.core.database import save_tick, get_recent_ticks, save_features, save_regime_shift
 from backend.app.core.cache import publish_event
 
+@pytest.fixture
+def anyio_backend() -> str:
+    return "asyncio"
+
 def test_optional_persistence_in_memory_fallbacks() -> None:
     # Verify database mock fallback logic works perfectly with no DB active
     save_tick("BTCUSDT", 65000.0, 64990.0, 65010.0, 25.0, 30.0, 15.0)

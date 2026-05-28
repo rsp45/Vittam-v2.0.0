@@ -33,6 +33,7 @@ class ModelGenerationRequest:
     confidence: float
     champion_rmse: float
     challenger_rmse: float
+    features: dict | None = None
     researcher_hypothesis: str | None = None
 
 
@@ -49,6 +50,12 @@ def build_generation_prompt(request: ModelGenerationRequest) -> str:
     if request.researcher_hypothesis:
         hypothesis_section = f"- Researcher Guidance: {request.researcher_hypothesis}\n"
 
+    features_section = ""
+    if request.features:
+        features_section = "- Microstructural & Statistical Features:\n"
+        for key, val in request.features.items():
+            features_section += f"  * {key}: {val}\n"
+
     return f"""
 You are generating a Python volatility model for Vittam V 2.0.
 
@@ -58,10 +65,10 @@ Context:
 - Regime confidence: {request.confidence:.2%}
 - Champion RMSE: {request.champion_rmse:.8f}
 - Current challenger RMSE: {request.challenger_rmse:.8f}
-{hypothesis_section}- Promotion target: beat champion RMSE by at least 15%.
+{features_section}{hypothesis_section}- Promotion target: beat champion RMSE by at least 15%.
 
 Instructions:
-1. First, formulate a scientific hypothesis about the active regime. Explain the mathematical lineage (e.g., fractional Brownian motion, HAR-RV, GARCH) you are using and why it fits this regime.
+1. First, formulate a scientific hypothesis about the active regime. Explain the mathematical lineage (e.g., fractional Brownian motion, HAR-RV, GARCH) you are using and why it fits this regime. Expose how you utilize the statistical indicators (like Bipower Variation jumps, Skewness, Kurtosis, volatility of volatility) inside your modeling approach.
 2. Then, provide the Python code inside a ```python ``` block.
 
 Rules for the Python code:

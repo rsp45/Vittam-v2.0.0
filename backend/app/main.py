@@ -213,7 +213,13 @@ async def stream_volatility(websocket: WebSocket) -> None:
             "spread": latest_tick.get("spread", 0.0),
             "vpin_proxy": latest_tick.get("vpin_proxy", 0.0),
             "timeline": current_data["timeline"],
-            "validation": current_data["validation"]
+            "validation": {
+                "model_id": current_data["validation"].model_id,
+                "champion_rmse": current_data["validation"].champion_rmse,
+                "challenger_rmse": current_data["validation"].challenger_rmse,
+                "improvement_ratio": current_data["validation"].improvement_ratio,
+                "passed": current_data["validation"].passed,
+            }
         }
         await websocket.send_json(initial_payload)
     except Exception as exc:

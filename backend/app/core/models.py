@@ -33,6 +33,12 @@ class FeatureVector:
     order_book_slope: float = 0.0
     micro_price_returns: float = 0.0
     volatility_clustering: float = 0.0
+    realized_bipower_variation: float = 0.0
+    volatility_of_volatility: float = 0.0
+    return_skewness: float = 0.0
+    return_kurtosis: float = 0.0
+    depth_imbalance_acceleration: float = 0.0
+    price_momentum: float = 0.0
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 

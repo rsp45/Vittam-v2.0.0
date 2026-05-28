@@ -12,6 +12,7 @@ def run_market_analyst(context: TaskContext, memory: SharedMemoryStore) -> Agent
     demo = run_demo_pipeline()
     state = demo["latest_state"]
     validation = demo["validation"]
+    features = state.evidence
     analysis = {
         "symbol": context.symbol,
         "regime": state.label,
@@ -19,6 +20,18 @@ def run_market_analyst(context: TaskContext, memory: SharedMemoryStore) -> Agent
         "shift_count": demo["shift_count"],
         "champion_rmse": validation.champion_rmse,
         "challenger_rmse": validation.challenger_rmse,
+        "features": {
+            "realized_volatility": round(features.realized_volatility, 6),
+            "realized_bipower_variation": round(features.realized_bipower_variation, 6),
+            "volatility_of_volatility": round(features.volatility_of_volatility, 6),
+            "return_skewness": round(features.return_skewness, 4),
+            "return_kurtosis": round(features.return_kurtosis, 4),
+            "depth_imbalance_acceleration": round(features.depth_imbalance_acceleration, 4),
+            "price_momentum": round(features.price_momentum, 6),
+            "order_flow_imbalance": round(features.order_flow_imbalance, 4),
+            "spread": round(features.spread, 4),
+            "vpin_proxy": round(features.vpin_proxy, 4),
+        }
     }
     memory.put("market.analysis", analysis)
     return AgentResult(agent="market_analyst", payload=analysis)
@@ -70,6 +83,7 @@ def run_model_builder(context: TaskContext, memory: SharedMemoryStore) -> AgentR
             confidence=float(analysis["confidence"]),
             champion_rmse=float(analysis["champion_rmse"]),
             challenger_rmse=float(analysis["challenger_rmse"]),
+            features=analysis.get("features"),
             researcher_hypothesis=researcher_hypothesis,
         )
     )
@@ -121,6 +135,9 @@ def run_risk_guard(context: TaskContext, memory: SharedMemoryStore) -> AgentResu
 def run_portfolio_governor(context: TaskContext, memory: SharedMemoryStore) -> AgentResult:
     candidate = memory.get("model.candidate")
     risk = memory.get("risk.assessment")
+    analysis = memory.get("market.analysis")
+    if not isinstance(analysis, dict):
+        analysis = {}
     if not isinstance(candidate, dict):
         candidate = run_model_builder(context, memory).payload
     if not isinstance(risk, dict):
