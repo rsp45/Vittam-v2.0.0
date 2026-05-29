@@ -368,8 +368,3 @@ async def stream_events(websocket: WebSocket) -> None:
         logger.error(f"Error in events stream: {exc}")
     finally:
         ingest_worker.unsubscribe_events(q)
-
-from fastapi import Request
-@app.api_route("/{path_name:path}", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
-async def catch_all(request: Request, path_name: str):
-    return {"path_name": path_name, "url": str(request.url), "headers": dict(request.headers)}
