@@ -21,8 +21,27 @@ from backend.app.services.generated_model_runner import benchmark_generated_mode
 from backend.app.services.llm_agent import ModelGenerationRequest, generate_model
 from backend.app.services.binance_ingest import BinanceIngestWorker
 
+from backend.app.core.db import get_supabase_client
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("vittam.api")
+
+def log_model_to_registry(model_id: str, source_code: str, symbol: str, regime: str, benchmark: dict) -> None:
+    supabase = get_supabase_client()
+    if supabase:
+        try:
+            supabase.table("model_registry").insert({
+                "model_id": model_id,
+                "source_code": source_code,
+                "symbol": symbol,
+                "regime": regime,
+                "champion_rmse": benchmark.get("champion_rmse"),
+                "challenger_rmse": benchmark.get("generated_rmse"),
+                "improvement_ratio": benchmark.get("improvement_ratio"),
+                "status": "PROMOTED" if benchmark.get("passed") else "REJECTED"
+            }).execute()
+        except Exception as e:
+            logger.error(f"Failed to log model to Supabase: {e}")
 
 # Initialize real-time background worker
 ingest_worker = BinanceIngestWorker(symbol="BTCUSDT")
@@ -125,6 +144,14 @@ async def validate_custom_model(request: CustomModelRequest) -> dict[str, object
             "reason": safety.issues[0] if safety.issues else (benchmark.issues[0] if benchmark.issues else "failed safety or did not beat champion")
         })
         
+    log_model_to_registry(
+        model_id="manual-custom-candidate",
+        source_code=source_code,
+        symbol=result["latest_state"].evidence.symbol,
+        regime=result["latest_state"].label,
+        benchmark={"champion_rmse": benchmark.champion_rmse, "generated_rmse": benchmark.generated_rmse, "improvement_ratio": benchmark.improvement_ratio, "passed": (safety.passed and benchmark.passed)}
+    )
+        
     return {
         "safety": {
             "passed": safety.passed,
@@ -207,6 +234,14 @@ async def generate_agent_model() -> dict[str, object]:
             "model_id": "generated-openrouter-candidate",
             "reason": "failed safety or did not beat champion"
         })
+        
+    log_model_to_registry(
+        model_id="generated-openrouter-candidate",
+        source_code=generation.source_code,
+        symbol=state.evidence.symbol,
+        regime=state.label,
+        benchmark={"champion_rmse": benchmark.champion_rmse, "generated_rmse": benchmark.generated_rmse, "improvement_ratio": benchmark.improvement_ratio, "passed": (safety.passed and benchmark.passed)}
+    )
         
     return {
         "provider": generation.provider,
