@@ -11,11 +11,13 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade -r requirements.txt
 
-# Copy backend application code
-COPY app /code/app
+# Copy backend application code to preserve backend.app namespace
+COPY . /code/backend
+
+ENV PYTHONPATH=/code
 
 # Expose port
 EXPOSE 8000
 
 # Start FastAPI application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
