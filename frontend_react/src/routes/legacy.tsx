@@ -21,7 +21,7 @@ function LegacyDashboard() {
           </div>
         </div>
         <iframe
-          src={`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/v1/legacy/`}
+          src="/v1/legacy/"
           className="w-full h-full border-none relative z-10"
           title="Vittam 1.0 Legacy Dashboard"
         />
