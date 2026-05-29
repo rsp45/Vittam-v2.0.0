@@ -25,10 +25,12 @@ services:
       deploy_on_push: true
     source_dir: frontend_react
     build_command: npm run build
-    run_command: npx vinxi start
+    run_command: npm run start
     envs:
       - key: PORT
         value: "3000"
+      - key: HOST
+        value: "0.0.0.0"
       - key: VITE_API_URL
         value: ${vittam-backend.PUBLIC_URL}
     http_port: 3000
