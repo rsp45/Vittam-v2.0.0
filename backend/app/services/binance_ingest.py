@@ -28,10 +28,38 @@ class BinanceIngestWorker:
         self.states: deque[RegimeState] = deque(maxlen=200)
         self.timeline: deque[dict[str, object]] = deque(maxlen=100)
         self.volatility_values: list[float] = []
+        self.active_challenger_code: str | None = None
+        self.pending_shock: str | None = None
         
         # Queue for WebSocket listeners
         self.subscribers: set[asyncio.Queue] = set()
         self.event_subscribers: set[asyncio.Queue] = set()
+
+    async def change_symbol(self, new_symbol: str) -> None:
+        new_symbol = new_symbol.upper().strip()
+        if new_symbol == self.symbol:
+            return
+            
+        logger.info(f"Swapping active symbol from {self.symbol} to {new_symbol}...")
+        
+        self.running = False
+        await asyncio.sleep(0.5) # allow active loops to break
+        
+        self.symbol = new_symbol
+        self.ticks.clear()
+        self.features.clear()
+        self.states.clear()
+        self.timeline.clear()
+        self.volatility_values.clear()
+        self.feature_engine = FeatureEngine(window_size=30)
+        self.detector = RegimeDetector(confirmation_windows=3)
+        
+        self.running = True
+        asyncio.create_task(self._run_loop())
+        
+        await self.broadcast_event("SYMBOL_SWAPPED", {
+            "symbol": self.symbol
+        })
 
     def subscribe(self) -> asyncio.Queue:
         q = asyncio.Queue(maxsize=100)
@@ -76,6 +104,30 @@ class BinanceIngestWorker:
                 except Exception:
                     pass
 
+    def compute_live_forecasts(self, vols: list[float]) -> tuple[list[float], list[float]]:
+        from backend.app.core.validators import GARCHBaseline, StressWeightedChallenger
+        champ = GARCHBaseline()
+        champ.fit(vols)
+        champ_forecast = champ.predict(8)
+        
+        if self.active_challenger_code:
+            try:
+                from backend.app.services.generated_model_runner import SAFE_BUILTINS
+                namespace = {}
+                exec(self.active_challenger_code, {"__builtins__": SAFE_BUILTINS, "__name__": "generated_model"}, namespace)
+                model_class = namespace["GeneratedVolatilityModel"]
+                model = model_class()
+                model.fit(vols)
+                chall_forecast = [float(p) for p in model.predict(8)]
+                return champ_forecast, chall_forecast
+            except Exception:
+                pass
+                
+        challenger = StressWeightedChallenger()
+        challenger.fit(vols)
+        chall_forecast = challenger.predict(8)
+        return champ_forecast, chall_forecast
+
     def get_latest_demo_package(self) -> dict[str, object]:
         """Provides compatibility with the old run_demo_pipeline structure."""
         if not self.states:
@@ -105,12 +157,15 @@ class BinanceIngestWorker:
             vols = [0.01 for _ in range(20 - len(vols))] + vols
             
         validation = validate_challenger(vols[-40:])
+        champ_forecast, chall_forecast = self.compute_live_forecasts(vols)
         return {
             "latest_state": self.states[-1],
             "shift_count": sum(1 for s in self.states if s.shift_detected),
             "validation": validation,
             "timeline": list(self.timeline),
-            "volatility_values": vols
+            "volatility_values": vols,
+            "champion_forecasts": [round(f, 6) for f in champ_forecast],
+            "challenger_forecasts": [round(f, 6) for f in chall_forecast],
         }
 
     async def start(self) -> None:
@@ -167,15 +222,42 @@ class BinanceIngestWorker:
         
         while self.running:
             step += 1
-            # Simulate regime shift triggers periodically to keep the demo dynamic
-            # First 20 are calm, next 20 are panic (high volatility), etc.
-            volatility = 12.0 if (step % 60) < 30 else 95.0
-            drift = 4.0 if (step % 60) >= 30 else 0.5
-            price = max(100.0, price + random.gauss(drift, volatility))
-            spread = 2.0 if (step % 60) < 30 else 18.0
-            bid_size = random.uniform(20, 80)
-            ask_size = random.uniform(20, 80) if (step % 60) < 30 else random.uniform(5, 35)
-            
+            if self.pending_shock:
+                shock = self.pending_shock
+                self.pending_shock = None
+                
+                logger.info(f"INJECTING MANUAL MARKET SHOCK: {shock}")
+                await self.broadcast_event("SHOCK_INJECTED", {"type": shock})
+                
+                if shock == "flash_crash":
+                    price = max(100.0, price * 0.65)
+                    volatility = 180.0
+                    spread = 45.0
+                    bid_size = 5.0
+                    ask_size = 250.0
+                    volume = 600.0
+                elif shock == "liquidity_dryout":
+                    volatility = 90.0
+                    spread = 75.0
+                    bid_size = 1.0
+                    ask_size = 1.0
+                    volume = 0.2
+                elif shock == "bull_rally":
+                    price = price * 1.25
+                    volatility = 80.0
+                    spread = 4.0
+                    bid_size = 300.0
+                    ask_size = 8.0
+                    volume = 500.0
+            else:
+                volatility = 12.0 if (step % 60) < 30 else 95.0
+                drift = 4.0 if (step % 60) >= 30 else 0.5
+                price = max(100.0, price + random.gauss(drift, volatility))
+                spread = 2.0 if (step % 60) < 30 else 18.0
+                bid_size = random.uniform(20, 80)
+                ask_size = random.uniform(20, 80) if (step % 60) < 30 else random.uniform(5, 35)
+                volume = random.uniform(5, 75)
+                
             tick = MarketTick(
                 symbol=self.symbol,
                 price=price,
@@ -183,7 +265,7 @@ class BinanceIngestWorker:
                 ask=price + spread / 2,
                 bid_size=bid_size,
                 ask_size=ask_size,
-                volume=random.uniform(5, 75),
+                volume=volume,
                 timestamp=datetime.now(timezone.utc)
             )
             
@@ -245,6 +327,7 @@ class BinanceIngestWorker:
         if len(vols) < 20:
             vols = [0.01 for _ in range(20 - len(vols))] + vols
         validation = validate_challenger(vols[-40:])
+        champ_forecast, chall_forecast = self.compute_live_forecasts(vols)
         
         broadcast_payload = {
             "product": "Vittam V 2.0",
@@ -265,7 +348,9 @@ class BinanceIngestWorker:
                 "challenger_rmse": validation.challenger_rmse,
                 "improvement_ratio": validation.improvement_ratio,
                 "passed": validation.passed
-            }
+            },
+            "champion_forecasts": [round(f, 6) for f in champ_forecast],
+            "challenger_forecasts": [round(f, 6) for f in chall_forecast],
         }
         await self.broadcast_tick(broadcast_payload)
         

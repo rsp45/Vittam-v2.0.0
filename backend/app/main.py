@@ -7,12 +7,16 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import asyncio
+from pydantic import BaseModel
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+import gradio as gr
 
 from backend.app.orchestration import RufloInspiredOrchestrator
 from backend.app.orchestration.audit_log import read_workflow_history, serialize_workflow_trace
 from backend.app.services.code_safety import inspect_generated_model
+from backend.app.legacy_dashboard import demo as legacy_demo
 from backend.app.services.generated_model_runner import benchmark_generated_model
 from backend.app.services.llm_agent import ModelGenerationRequest, generate_model
 from backend.app.services.binance_ingest import BinanceIngestWorker
@@ -35,6 +39,9 @@ async def lifespan(app: FastAPI):
     await ingest_worker.stop()
 
 app = FastAPI(title="Vittam V 2.0", version="0.1.0", lifespan=lifespan)
+
+# Mount legacy Gradio dashboard
+app = gr.mount_gradio_app(app, legacy_demo, path="/v1/legacy")
 
 app.add_middleware(
     CORSMiddleware,
@@ -89,7 +96,68 @@ def run_demo() -> dict[str, object]:
             "improvement_ratio": validation.improvement_ratio,
             "passed": validation.passed,
         },
+        "champion_forecasts": result.get("champion_forecasts", []),
+        "challenger_forecasts": result.get("challenger_forecasts", []),
     }
+
+
+class CustomModelRequest(BaseModel):
+    source_code: str
+
+
+@app.post("/v1/agent/validate-custom")
+async def validate_custom_model(request: CustomModelRequest) -> dict[str, object]:
+    source_code = request.source_code
+    safety = inspect_generated_model(source_code)
+    
+    result = ingest_worker.get_latest_demo_package()
+    benchmark = benchmark_generated_model(source_code, result["volatility_values"][-40:])
+    
+    if safety.passed and benchmark.passed:
+        ingest_worker.active_challenger_code = source_code
+        await ingest_worker.broadcast_event("MODEL_PROMOTED", {
+            "model_id": "manual-custom-candidate",
+            "improvement_ratio": benchmark.improvement_ratio
+        })
+    else:
+        await ingest_worker.broadcast_event("MODEL_REJECTED", {
+            "model_id": "manual-custom-candidate",
+            "reason": safety.issues[0] if safety.issues else (benchmark.issues[0] if benchmark.issues else "failed safety or did not beat champion")
+        })
+        
+    return {
+        "safety": {
+            "passed": safety.passed,
+            "issues": safety.issues,
+        },
+        "benchmark": {
+            "passed": benchmark.passed,
+            "champion_rmse": benchmark.champion_rmse,
+            "generated_rmse": benchmark.generated_rmse,
+            "improvement_ratio": benchmark.improvement_ratio,
+            "issues": benchmark.issues,
+        },
+    }
+
+
+class SymbolSwapRequest(BaseModel):
+    symbol: str
+
+
+@app.post("/v1/ingest/symbol")
+async def swap_active_symbol(request: SymbolSwapRequest) -> dict[str, str]:
+    await ingest_worker.change_symbol(request.symbol)
+    return {"status": "ok", "symbol": ingest_worker.symbol}
+
+
+class StressShockRequest(BaseModel):
+    type: str
+
+
+@app.post("/v1/demo/stress-shock")
+async def inject_stress_shock(request: StressShockRequest) -> dict[str, str]:
+    ingest_worker.pending_shock = request.type
+    return {"status": "ok", "shock": request.type}
 
 
 @app.post("/v1/agent/generate-model")
@@ -129,6 +197,7 @@ async def generate_agent_model() -> dict[str, object]:
     })
     
     if safety.passed and benchmark.passed:
+        ingest_worker.active_challenger_code = generation.source_code
         await ingest_worker.broadcast_event("MODEL_PROMOTED", {
             "model_id": "generated-openrouter-candidate",
             "improvement_ratio": benchmark.improvement_ratio
@@ -174,6 +243,18 @@ async def run_orchestrator(intent: str = "full_cycle", symbol: str = "BTCUSDT") 
         if res.agent == "portfolio_governor":
             decision_payload = res.payload
             
+    # Find and hot-swap candidate source code if consensus approved it
+    if decision_payload.get("approved", False):
+        for res in trace.results:
+            if res.agent == "model_builder":
+                code = res.payload.get("source_code")
+                if code:
+                    ingest_worker.active_challenger_code = code
+                    await ingest_worker.broadcast_event("MODEL_PROMOTED", {
+                        "model_id": "ruflo-consensus-candidate",
+                        "improvement_ratio": res.payload.get("benchmark", {}).get("improvement_ratio", 0.0)
+                    })
+
     # Broadcast workflow completed event
     await ingest_worker.broadcast_event("WORKFLOW_COMPLETED", {
         "workflow_id": trace.workflow_id,

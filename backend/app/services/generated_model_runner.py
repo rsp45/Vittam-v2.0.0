@@ -31,6 +31,21 @@ class GeneratedModelBenchmark:
     issues: list[str]
 
 
+import multiprocessing
+
+def _run_model_in_process(source_code: str, train: list[float], horizon: int, queue: multiprocessing.Queue) -> None:
+    try:
+        namespace: dict[str, object] = {}
+        exec(source_code, {"__builtins__": SAFE_BUILTINS, "__name__": "generated_model"}, namespace)
+        model_class = namespace["GeneratedVolatilityModel"]
+        model = model_class()
+        model.fit(train)
+        predictions = model.predict(horizon)
+        queue.put((True, [float(value) for value in predictions]))
+    except Exception as exc:
+        queue.put((False, str(exc)))
+
+
 def benchmark_generated_model(
     source_code: str,
     values: list[float],
@@ -61,14 +76,26 @@ def benchmark_generated_model(
     champion_rmse = best_champion_rmse
 
     try:
-        namespace: dict[str, object] = {}
-        exec(source_code, {"__builtins__": SAFE_BUILTINS, "__name__": "generated_model"}, namespace)
-        model_class = namespace["GeneratedVolatilityModel"]
-        model = model_class()
-        model.fit(train)
-        generated_predictions = model.predict(len(test))
+        queue = multiprocessing.Queue()
+        p = multiprocessing.Process(
+            target=_run_model_in_process,
+            args=(source_code, train, len(test), queue)
+        )
+        p.start()
+        p.join(timeout=2.0)
+        
+        if p.is_alive():
+            p.terminate()
+            p.join()
+            return GeneratedModelBenchmark(False, champion_rmse, None, 0.0, ["runtime error: sandbox execution timed out after 2.0s"])
+            
+        success, result_data = queue.get_nowait() if not queue.empty() else (False, "no predictions returned")
+        if not success:
+            return GeneratedModelBenchmark(False, champion_rmse, None, 0.0, [f"runtime error: {result_data}"])
+            
+        generated_predictions = result_data
         _assert_predictions(generated_predictions, len(test))
-        generated_rmse = rmse(test, [float(value) for value in generated_predictions])
+        generated_rmse = rmse(test, generated_predictions)
     except Exception as exc:
         return GeneratedModelBenchmark(False, champion_rmse, None, 0.0, [f"runtime error: {exc}"])
 

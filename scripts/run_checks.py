@@ -21,6 +21,7 @@ TEST_MODULES = [
     "tests.test_orchestration",
     "tests.test_regime_detector",
     "tests.test_validators",
+    "tests.test_sandbox_timeout",
 ]
 
 
