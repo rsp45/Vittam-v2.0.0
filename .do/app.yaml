@@ -16,8 +16,11 @@ services:
     instance_size_slug: basic-xxs
     routes:
       - path: /api
+        preserve_path_prefix: true
       - path: /v1
+        preserve_path_prefix: true
       - path: /health
+        preserve_path_prefix: true
 
   - name: vittam-frontend
     github:
